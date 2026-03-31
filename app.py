@@ -1,9 +1,11 @@
 import os
 import uuid
-from flask import Flask, request, jsonify, send_from_directory
+
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-from jobs import create_job, get_job, update_job, run_job_in_background
+from jobs import create_job, get_job, run_job_in_background, update_job
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
@@ -13,17 +15,17 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 300 * 1024 * 1024  # 300 MB example
+
+CORS(app, resources={r"/*": {"origins": "*"}})
+
+app.config["MAX_CONTENT_LENGTH"] = 300 * 1024 * 1024
 
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 ALLOWED_VIDEO_EXTENSIONS = {"mp4", "mov", "avi", "mkv"}
 
 
 def allowed_file(filename, allowed_extensions):
-    return (
-        "." in filename
-        and filename.rsplit(".", 1)[1].lower() in allowed_extensions
-    )
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed_extensions
 
 
 @app.route("/api/v1/swap", methods=["POST"])
@@ -65,10 +67,7 @@ def swap():
 
     run_job_in_background(job_id)
 
-    return jsonify({
-        "status": "processing",
-        "job_id": job_id
-    }), 202
+    return jsonify({"status": "processing", "job_id": job_id}), 202
 
 
 @app.route("/api/v1/status/<job_id>", methods=["GET"])
@@ -77,10 +76,7 @@ def status(job_id):
     if not job:
         return jsonify({"error": "Job not found"}), 404
 
-    response = {
-        "status": job["status"],
-        "progress": job["progress"]
-    }
+    response = {"status": job["status"], "progress": job["progress"]}
 
     if job["status"] == "completed":
         response["result_url"] = f"/media/{os.path.basename(job['output_path'])}"

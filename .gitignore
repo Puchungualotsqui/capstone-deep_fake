@@ -49,3 +49,4 @@ dist/
 .ruff_cache/
 .coverage
 htmlcov/
+tests/
