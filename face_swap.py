@@ -1,8 +1,10 @@
 import os
+import subprocess
+
 import cv2
 import insightface
-from insightface.app import FaceAnalysis
 import onnxruntime as ort
+from insightface.app import FaceAnalysis
 
 ort.preload_dlls(directory="")
 ort.print_debug_info()
@@ -43,7 +45,52 @@ def load_models(progress_callback=None):
         progress_callback(25)
 
 
-def process_video_swap(source_image_path, target_video_path, output_video_path, progress_callback=None):
+def reencode_to_browser_safe_mp4(
+    temp_video_path,
+    original_video_path,
+    final_output_path,
+):
+    """
+    Re-encode the processed temp video to H.264/AAC MP4.
+    Tries to preserve audio from the original target video if present.
+    """
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        temp_video_path,
+        "-i",
+        original_video_path,
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0?",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-shortest",
+        final_output_path,
+    ]
+
+    print("Running ffmpeg:", " ".join(cmd))
+    subprocess.run(cmd, check=True)
+
+
+def process_video_swap(
+    source_image_path, target_video_path, output_video_path, progress_callback=None
+):
     load_models(progress_callback)
 
     source_img = cv2.imread(source_image_path)
@@ -76,40 +123,55 @@ def process_video_swap(source_image_path, target_video_path, output_video_path, 
     if total_frames <= 0:
         total_frames = 1
 
+    temp_output_path = output_video_path.replace(".mp4", "_temp.mp4")
+
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
+    out = cv2.VideoWriter(temp_output_path, fourcc, fps, (width, height))
+    if not out.isOpened():
+        cap.release()
+        raise ValueError("Could not create temporary output video")
 
     if progress_callback:
         progress_callback(40)
 
     frame_idx = 0
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
 
-        faces = face_app.get(frame)
-        result_frame = frame.copy()
+            faces = face_app.get(frame)
+            result_frame = frame.copy()
 
-        for target_face in faces:
-            result_frame = swapper.get(
-                result_frame,
-                target_face,
-                source_face,
-                paste_back=True
-            )
+            for target_face in faces:
+                result_frame = swapper.get(
+                    result_frame, target_face, source_face, paste_back=True
+                )
 
-        out.write(result_frame)
-        frame_idx += 1
+            out.write(result_frame)
+            frame_idx += 1
 
-        # Map frame progress into 40..99 range
-        progress = 40 + int((frame_idx / total_frames) * 59)
-        if progress_callback:
-            progress_callback(min(progress, 99))
+            progress = 40 + int((frame_idx / total_frames) * 50)
+            if progress_callback:
+                progress_callback(min(progress, 90))
 
-    cap.release()
-    out.release()
+    finally:
+        cap.release()
+        out.release()
+
+    if progress_callback:
+        progress_callback(95)
+
+    reencode_to_browser_safe_mp4(
+        temp_video_path=temp_output_path,
+        original_video_path=target_video_path,
+        final_output_path=output_video_path,
+    )
+
+    if os.path.exists(temp_output_path):
+        os.remove(temp_output_path)
 
     if progress_callback:
         progress_callback(100)
