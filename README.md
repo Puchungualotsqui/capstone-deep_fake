@@ -1,82 +1,93 @@
-```md
-# FaceSwap Backend (Flask)
-
-This is the backend service for the FaceSwap project. It provides an API to upload a source face image and a target video, performs face swapping using InsightFace, and returns a processed video.
 
 ---
 
-## Features
+# FaceSwap Backend
 
-- Upload image and video via API
-- Asynchronous processing using background threads
-- Real-time progress tracking
-- GPU acceleration support (ONNX Runtime)
-- Outputs browser-compatible and WhatsApp-compatible MP4 videos (H.264 + AAC)
-- Simple REST API for frontend integration
+This repository contains the backend service for the FaceSwap application.
+It provides a REST API that accepts a source face image and a target video, performs face swapping using InsightFace, and returns a processed video.
+
+The backend is implemented in Python using Flask and performs video processing with OpenCV, InsightFace, ONNX Runtime, and FFmpeg.
 
 ---
 
-## Project Structure
+# Features
+
+* REST API for submitting face swap jobs
+* Asynchronous background processing
+* Real-time progress polling
+* GPU acceleration using ONNX Runtime (optional)
+* Browser-compatible video output (H.264 + AAC)
+* Automatic audio preservation from the original video
+* Compatible with web browsers and messaging platforms
+
+---
+
+# Project Structure
 
 ```
-
-.
-├── app.py                # Flask app and routes
-├── jobs.py               # Background job management
-├── face_swap.py          # Face swap processing logic
-├── models/               # ONNX model files (not tracked)
-├── uploads/              # Uploaded files (runtime)
-├── outputs/              # Generated videos (runtime)
+backend/
+├── app.py
+├── jobs.py
+├── face_swap.py
+├── uploads/
+├── outputs/
+├── models/
+│   └── inswapper_128.onnx
 ├── requirements.txt
 └── README.md
-
-````
-
----
-
-## Requirements
-
-- Python 3.12 recommended
-- ffmpeg installed on system
-- NVIDIA GPU (optional, for acceleration)
-
----
-
-## Setup
-
-### 1. Clone the repository
-
-```bash
-git clone <your-repo-url>
-cd <repo-folder>
-````
-
-### 2. Create virtual environment
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate.fish   # for fish shell
-# or
-source .venv/bin/activate        # for bash/zsh
 ```
 
-### 3. Install dependencies
+---
 
-```bash
+# Requirements
+
+* Python 3.12 recommended
+* FFmpeg installed and available in PATH
+* NVIDIA GPU recommended for faster processing (optional)
+
+Python packages are listed in `requirements.txt`.
+
+---
+
+# Setup
+
+## 1. Clone the repository
+
+```
+git clone <repository-url>
+cd backend
+```
+
+## 2. Create a virtual environment
+
+```
+python3.12 -m venv .venv
+source .venv/bin/activate
+```
+
+For Fish shell:
+
+```
+source .venv/bin/activate.fish
+```
+
+## 3. Install dependencies
+
+```
 pip install -r requirements.txt
 ```
 
-### 4. Install ffmpeg
+---
 
-```bash
-sudo pacman -S ffmpeg     # Arch Linux
-# or
-sudo apt install ffmpeg   # Ubuntu/Debian
+# Model Setup
+
+Download the InsightFace swap model:
+
+```
+inswapper_128.onnx
 ```
 
-### 5. Add model file
-
-Download `inswapper_128.onnx` and place it in:
+Place it in:
 
 ```
 models/inswapper_128.onnx
@@ -84,13 +95,15 @@ models/inswapper_128.onnx
 
 ---
 
-## Running the Server
+# Running the Server
 
-```bash
+Start the Flask server:
+
+```
 python app.py
 ```
 
-Server will run at:
+The server runs at:
 
 ```
 http://127.0.0.1:5000
@@ -98,23 +111,36 @@ http://127.0.0.1:5000
 
 ---
 
-## API Endpoints
+# API Endpoints
 
-### POST `/api/v1/swap`
+## POST `/api/v1/swap`
 
-Upload files and start processing.
+Upload a source face image and target video.
 
-**Request:**
+Request type:
 
-* Content-Type: `multipart/form-data`
-* Fields:
+```
+multipart/form-data
+```
 
-  * `source_image` (image file)
-  * `target_video` (mp4 file)
+Fields:
 
-**Response:**
+```
+source_image  image file (jpg or png)
+target_video  video file (mp4)
+```
 
-```json
+Example:
+
+```
+curl -X POST http://127.0.0.1:5000/api/v1/swap \
+  -F "source_image=@face.jpg" \
+  -F "target_video=@video.mp4"
+```
+
+Response:
+
+```
 {
   "status": "processing",
   "job_id": "uuid"
@@ -123,175 +149,140 @@ Upload files and start processing.
 
 ---
 
-### GET `/api/v1/status/{job_id}`
+## GET `/api/v1/status/{job_id}`
 
-Check job progress.
+Check the progress of a submitted job.
 
-**Processing:**
+Example:
 
-```json
+```
+curl http://127.0.0.1:5000/api/v1/status/<job_id>
+```
+
+Possible responses during processing:
+
+```
 {
   "status": "processing",
   "progress": 45
 }
 ```
 
-**Completed:**
+Completed job:
 
-```json
+```
 {
   "status": "completed",
   "progress": 100,
-  "result_url": "/media/<file>.mp4"
+  "result_url": "/media/<job_id>.mp4"
 }
 ```
 
-**Failed:**
+Failed job:
 
-```json
+```
 {
   "status": "failed",
-  "progress": 10,
   "error": "error message"
 }
 ```
 
 ---
 
-### GET `/media/<filename>`
+## GET `/media/<filename>`
 
-Serves generated video file.
+Download the generated video file.
 
----
+Example:
 
-## Testing with curl
-
-### Upload
-
-```bash
-curl -X POST http://127.0.0.1:5000/api/v1/swap \
-  -F "source_image=@face.jpg" \
-  -F "target_video=@video.mp4"
 ```
-
-### Check status
-
-```bash
-curl http://127.0.0.1:5000/api/v1/status/<job_id>
-```
-
-### Download result
-
-```bash
-curl -L -o result.mp4 http://127.0.0.1:5000/media/<filename>.mp4
+http://127.0.0.1:5000/media/<job_id>.mp4
 ```
 
 ---
 
-## Notes on Video Output
+# Frontend Integration
 
-The backend:
+Frontend applications should follow this workflow:
 
-1. Processes frames using OpenCV
-2. Generates a temporary video
-3. Re-encodes using ffmpeg to ensure compatibility:
+1. Upload files using `POST /api/v1/swap`
+2. Store the returned `job_id`
+3. Poll `GET /api/v1/status/{job_id}` every 2–3 seconds
+4. Update the UI progress bar from `progress`
+5. When `status = completed`, load the video from `result_url`
+6. When `status = failed`, display the error message
+
+---
+
+# Video Encoding
+
+The processing pipeline:
+
+1. Frames are processed using OpenCV and InsightFace
+2. A temporary video is generated
+3. FFmpeg re-encodes the video to ensure compatibility
+
+Final encoding settings:
 
 * Video codec: H.264
 * Audio codec: AAC
 * Pixel format: yuv420p
+* Container: MP4
 
-This ensures compatibility with browsers and messaging platforms such as WhatsApp.
+This ensures compatibility with browsers and messaging platforms.
 
 ---
 
-## GPU Support
+# Troubleshooting
 
-To enable GPU acceleration:
+## GPU not used
 
-```bash
+Verify ONNX Runtime providers:
+
+```
+python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+```
+
+Expected output should include:
+
+```
+CUDAExecutionProvider
+```
+
+If not, install GPU runtime:
+
+```
 pip install "onnxruntime-gpu[cuda,cudnn]"
 ```
 
-Verify:
+---
 
-```bash
-python -c "import onnxruntime as ort; print(ort.get_available_providers())"
-```
+## Video cannot be played in browser
 
-Expected:
+Ensure FFmpeg is installed:
 
 ```
-['CUDAExecutionProvider', 'CPUExecutionProvider']
+ffmpeg -version
 ```
+
+The backend automatically converts output to a browser-compatible format.
 
 ---
 
-## Troubleshooting
+# Development Notes
 
-### CORS issues
+This backend is designed to run locally during development.
+The Flask development server should not be used in production.
 
-Install and enable CORS:
+For production deployment, consider using:
 
-```bash
-pip install flask-cors
-```
-
-In `app.py`:
-
-```python
-from flask_cors import CORS
-CORS(app)
-```
+* Gunicorn
+* Nginx
+* Docker
+* A job queue such as Celery or Redis
 
 ---
 
-### Video not playing in browser
+# License
 
-Ensure ffmpeg step is working and output is encoded with:
-
-* libx264
-* yuv420p
-* aac
-
----
-
-### Model not found
-
-Ensure file exists:
-
-```
-models/inswapper_128.onnx
-```
-
----
-
-### GPU not used
-
-Check:
-
-```bash
-nvidia-smi
-```
-
-and:
-
-```bash
-python -c "import onnxruntime as ort; print(ort.get_available_providers())"
-```
-
----
-
-## Development Notes
-
-* Background jobs are handled with threads (not production-ready)
-* Jobs are stored in memory (lost on restart)
-* Suitable for prototypes and demos
-
----
-
-## License
-
-This project is for educational purposes.
-
-```
-```
+This project is intended for educational and research purposes.
